@@ -7,7 +7,8 @@ import Data.UUID
 import Data.Aeson
 
 data Action 
-    = CreateRoom String
+    = Connect String
+    | CreateRoom String
     | JoinRoom UUID
     | LeaveRoom UUID
     | ListAllRooms
@@ -18,10 +19,24 @@ data Action
 instance FromJSON Action
 instance ToJSON Action
 
-data IrcPayload = IrcPayload {
-      id :: UUID
-    , action :: Action
-} deriving (Generic, Show)
+data Response
+    = UserDisconnected UUID
+    | UserMessageToRoom UUID String
+    | UserJoinedRoom UUID
+    | UserCreated UUID
+    | ListOfUsers [String]
+    deriving (Generic, Show)
 
-instance FromJSON IrcPayload
-instance ToJSON IrcPayload
+instance FromJSON Response
+instance ToJSON Response
+
+data IrcRequest = IrcRequest { action :: Action } deriving (Generic, Show)
+
+instance FromJSON IrcRequest
+instance ToJSON IrcRequest
+
+
+data IrcResponse = IrcResponse {response :: Response} deriving (Generic, Show)
+
+instance FromJSON IrcResponse
+instance ToJSON IrcResponse

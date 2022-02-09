@@ -1,32 +1,42 @@
+--------------------------------------------------------------------------------
 {-# LANGUAGE OverloadedStrings #-}
--- Echo client program
-module Main (main) where
+module Main
+    ( main
+    ) where
 
-import qualified Control.Exception as E
-import qualified Data.ByteString.Char8 as C
-import Network.Socket
-import Network.Socket.ByteString (recv, sendAll)
-import Control.Concurrent
 
+--------------------------------------------------------------------------------
+import           Control.Concurrent  (forkIO)
+import           Control.Monad       (forever, unless)
+import           Control.Monad.Trans (liftIO)
+import           Network.Socket      (withSocketsDo)
+import           Data.Text           (Text)
+import qualified Data.Text           as T
+import qualified Data.Text.IO        as T
+import qualified Network.WebSockets  as WS
+
+
+--------------------------------------------------------------------------------
+app :: WS.ClientApp ()
+app conn = do
+    putStrLn "Connected!"
+
+    WS.sendTextData conn ("Hi! I am mac10688" :: Text)
+
+    -- Fork a thread that writes WS data to stdout
+    _ <- forkIO $ forever $ do
+        msg <- WS.receiveData conn
+        liftIO $ T.putStrLn msg
+
+    -- Read from stdin and write to WS
+    let loop = do
+            line <- T.getLine
+            unless (T.null line) $ WS.sendTextData conn line >> loop
+
+    loop
+    WS.sendClose conn ("Bye!" :: Text)
+
+
+--------------------------------------------------------------------------------
 main :: IO ()
-main = runTCPClient "127.0.0.1" "3000" talk
-        where talk s = do
-                sendAll s "Hello, world!"
-                msg <- recv s 1024
-                putStr "Received: "
-                C.putStrLn msg
-                threadDelay 1000000
-                talk s
-
--- from the "network-run" package.
-runTCPClient :: HostName -> ServiceName -> (Socket -> IO a) -> IO a
-runTCPClient host port client = withSocketsDo $ do
-    addr <- resolve
-    E.bracket (open addr) close client
-  where
-    resolve = do
-        let hints = defaultHints { addrSocketType = Stream }
-        head <$> getAddrInfo (Just hints) (Just host) (Just port)
-    open addr = E.bracketOnError (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)) close $ \sock -> do
-        connect sock $ addrAddress addr
-        return sock
+main = withSocketsDo $ WS.runClient "127.0.0.1" 9160 "/" app

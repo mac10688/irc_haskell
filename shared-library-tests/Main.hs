@@ -20,4 +20,4 @@ main = hspec $ do
   describe "Payload" $ do
     it "IrcPayload to json" $ do
       let uuid = fromMaybe (undefined::UUID) $ fromString "c2cc10e1-57d6-4b6f-9899-38d972112d8c"
-      encode (IrcPayload uuid ListAllRooms) `shouldBe`  "{\"action\":{\"tag\":\"ListAllRooms\"},\"id\":\"c2cc10e1-57d6-4b6f-9899-38d972112d8c\"}"
+      encode (IrcPayload uuid "Bob" ListAllRooms) `shouldBe` "{\"action\":{\"tag\":\"ListAllRooms\"},\"id\":\"c2cc10e1-57d6-4b6f-9899-38d972112d8c\"}"

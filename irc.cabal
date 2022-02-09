@@ -49,7 +49,7 @@ extra-source-files:  CHANGELOG.md
 
 library shared-library
   -- Modules exported by the library.
-  exposed-modules:     MySharedLib, Payload
+  exposed-modules:     Payload
 
   -- Modules included in this library but not exported.
   -- other-modules:
@@ -73,7 +73,7 @@ library shared-library
 
 library server-library
   -- Modules exported by the library.
-  exposed-modules:     MyServerLib
+  exposed-modules:     ConnectionState
 
   -- Modules included in this library but not exported.
   -- other-modules:
@@ -82,7 +82,7 @@ library server-library
   -- other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base ^>=4.14.3.0
+  build-depends:       base ^>=4.14.3.0, containers
 
   -- Directories containing source files.
   hs-source-dirs:      irc-server/server-library
@@ -107,7 +107,7 @@ executable irc-server-exe
   -- other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base ^>=4.14.3.0, shared-library, server-library, uuid, network, bytestring
+  build-depends:       base ^>=4.14.3.0, shared-library, server-library, uuid, network, bytestring, stm, say, text, websockets
 
   -- Directories containing source files.
   hs-source-dirs:      irc-server/server-app
@@ -157,7 +157,7 @@ executable irc-client-exe
   -- other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base ^>=4.14.3.0, shared-library, client-library, network, bytestring
+  build-depends:       base ^>=4.14.3.0, shared-library, client-library, bytestring, websockets, text, mtl, network
 
   -- Directories containing source files.
   hs-source-dirs:      irc-client/client-app
