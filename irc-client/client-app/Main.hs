@@ -1,10 +1,8 @@
---------------------------------------------------------------------------------
 {-# LANGUAGE OverloadedStrings #-}
+--------------------------------------------------------------------------------
 module Main
     ( main
     ) where
-
-
 --------------------------------------------------------------------------------
 import           Control.Concurrent  (forkIO)
 import           Control.Monad       (forever, unless)
@@ -14,6 +12,8 @@ import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified Data.Text.IO        as T
 import qualified Network.WebSockets  as WS
+import           Payload
+import           Data.Aeson
 
 
 --------------------------------------------------------------------------------
@@ -21,7 +21,8 @@ app :: WS.ClientApp ()
 app conn = do
     putStrLn "Connected!"
 
-    WS.sendTextData conn ("Hi! I am mac10688" :: Text)
+    let connect = encode $ Connect "Scoot"
+    WS.sendTextData conn connect
 
     -- Fork a thread that writes WS data to stdout
     _ <- forkIO $ forever $ do
@@ -31,7 +32,11 @@ app conn = do
     -- Read from stdin and write to WS
     let loop = do
             line <- T.getLine
-            unless (T.null line) $ WS.sendTextData conn line >> loop
+            case line of
+                "1" -> let createRoomJson = encode $ CreateRoom "Room1" in
+                       WS.sendTextData conn createRoomJson >> loop
+                _ -> loop
+            -- unless (T.null line) $ WS.sendTextData conn line >> loop
 
     loop
     WS.sendClose conn ("Bye!" :: Text)

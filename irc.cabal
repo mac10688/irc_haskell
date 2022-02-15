@@ -58,7 +58,7 @@ library shared-library
   -- other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base ^>=4.14.3.0, uuid, aeson
+  build-depends:       base ^>=4.14.3.0, uuid, aeson, text
 
   -- Directories containing source files.
   hs-source-dirs:      shared-library
@@ -107,7 +107,7 @@ executable irc-server-exe
   -- other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base ^>=4.14.3.0, shared-library, server-library, uuid, network, bytestring, stm, say, text, websockets
+  build-depends:       base ^>=4.14.3.0, shared-library, server-library, uuid, network, bytestring, stm, say, text, websockets, bimap, aeson, containers
 
   -- Directories containing source files.
   hs-source-dirs:      irc-server/server-app
@@ -157,7 +157,7 @@ executable irc-client-exe
   -- other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base ^>=4.14.3.0, shared-library, client-library, bytestring, websockets, text, mtl, network
+  build-depends:       base ^>=4.14.3.0, shared-library, client-library, bytestring, websockets, text, mtl, network, aeson, uuid
 
   -- Directories containing source files.
   hs-source-dirs:      irc-client/client-app
