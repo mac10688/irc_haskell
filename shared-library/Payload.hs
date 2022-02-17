@@ -32,7 +32,7 @@ data Response
     | UserJoinedRoom UUID
     | UserCreated UUID
     | ListOfUsers [Text]
-    | RoomCreated 
+    | RoomCreated UUID
     deriving (Generic, Show)
 
 instance FromJSON Response
