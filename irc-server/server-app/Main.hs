@@ -8,8 +8,10 @@ import Control.Monad (forM_, forever)
 import Control.Concurrent (MVar, newMVar, modifyMVar_, modifyMVar, readMVar)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Data.ByteString.Lazy as BS
 import Payload
 import Data.Aeson
 import Data.UUID
@@ -19,7 +21,6 @@ import Data.Maybe
 import Data.Monoid
 
 import qualified Network.WebSockets as WS
-
 data Room = Room {
     roomId :: UUID,
     roomName :: Text
@@ -92,11 +93,54 @@ createRoom id name state =
         usedRoomName' = S.insert name $ usedRoomNames state
     in state { rooms = rooms', usedRoomNames = usedRoomName' }
 
+joinRoom :: UUID -> UUID -> ServerState -> ServerState
+joinRoom userId roomId state = 
+    let
+        userToRoomMappings' = M.adjust (\roomSet -> S.insert roomId roomSet) userId $ userToRoomMappings state
+        roomToUserMappings' = M.adjust (\userSet -> S.insert userId userSet) roomId $ roomToUserMappings state
+    in state { userToRoomMappings = userToRoomMappings', roomToUserMappings = roomToUserMappings' }
+
+leaveRoom :: UUID -> UUID -> ServerState -> ServerState
+leaveRoom userId roomId state = 
+    let
+        userToRoomMappings' = M.adjust (\roomSet -> S.delete roomId roomSet) userId  $ userToRoomMappings state
+        roomToUserMappings' = M.adjust (\userSet -> S.delete userId userSet) roomId $ roomToUserMappings state
+    in state { userToRoomMappings = userToRoomMappings', roomToUserMappings = roomToUserMappings' }
+
+listAllRooms :: ServerState -> [Room]
+listAllRooms = M.elems . rooms
+
+listRoomMembers :: UUID -> ServerState -> [User]
+listRoomMembers id state = 
+    let
+        userIdList = S.toList $(M.findWithDefault S.empty id $ roomToUserMappings state :: S.Set UUID)
+        userMap = users state :: M.Map UUID User
+        userList = catMaybes $ Prelude.map (\userId' ->  (M.lookup userId' userMap)) userIdList
+    in userList
+
+sendRoomMessage :: UUID -> UUID -> Text -> ServerState -> IO ()
+sendRoomMessage fromUserId toRoomId msg' state =
+    let
+        userIdList = S.toList $(M.findWithDefault S.empty toRoomId $ (roomToUserMappings state) :: S.Set UUID)
+        userMap = users state :: M.Map UUID User
+        userList = catMaybes $ Prelude.map (\userId' -> (M.lookup userId' userMap)) userIdList
+        fromUser' = fromMaybe "Unknown" $ userName <$> (M.lookup fromUserId userMap)
+        jsonMessage = encode $ RoomMessage {toRoom=toRoomId, fromUser=fromUser', msg = msg' }
+    in do
+        forM_ userList $ \user -> WS.sendTextData (connection user) jsonMessage
+
 broadcast :: Text -> ServerState -> IO ()
 broadcast message state = do
-    T.putStrLn message
     forM_ (M.elems (users state)) $ \user -> WS.sendTextData (connection user) message
 
+sendToUser :: UUID -> Text -> ServerState -> IO ()
+sendToUser userId' msg state = 
+    let
+        userM = M.lookup userId' (users state)
+    in
+        case userM of
+            Just (user) -> WS.sendTextData (connection user) msg
+            Nothing -> return ()
 
 main :: IO ()
 main = do
@@ -104,8 +148,6 @@ main = do
     state <- newMVar newServerState
     WS.runServer "127.0.0.1" 9160 $ application state
 
-
-application :: MVar ServerState -> WS.ServerApp
 
 -- Note that `WS.ServerApp` is nothing but a type synonym for
 -- `WS.PendingConnection -> IO ()`.
@@ -117,6 +159,7 @@ application :: MVar ServerState -> WS.ServerApp
 -- We also fork a pinging thread in the background. This will ensure the connection
 -- stays alive on some browsers.
 
+application :: MVar ServerState -> WS.ServerApp
 application mVarState pending = do
     conn <- WS.acceptRequest pending
     WS.withPingThread conn 30 (return ()) $ do
@@ -143,7 +186,7 @@ application mVarState pending = do
                                 --      T.intercalate ", " (M.map fst s)
                                 broadcast (name <> " joined") s'
                                 return s'
-                            talk name conn mVarState
+                            talk userId conn mVarState
             Nothing -> WS.sendClose conn ("Not working" :: Text) --test that this actually closes a connection
             where
             disconnect userId = do
@@ -155,34 +198,36 @@ application mVarState pending = do
 
 -- The talk function continues to read messages from a single user until he
 -- disconnects. All messages are broadcasted to the other users.
-talk :: Text -> WS.Connection -> MVar ServerState -> IO ()
-talk user conn state = forever $ do
+talk :: UUID -> WS.Connection -> MVar ServerState -> IO ()
+talk userId' conn mVarState = forever $ do
     msg <- WS.receiveData conn
     actionM <- return $ (decode msg :: Maybe Action)
     case actionM of
         Just (action) -> case action of
-                                CreateRoom name -> modifyMVar_ state $ \s -> do
+                                CreateRoom name -> modifyMVar_ mVarState $ \s -> do
                                     uuid <- createUUID
                                     let s' = createRoom uuid name s
-                                    WS.sendTextData conn $ encode $ RoomCreated uuid
+                                    WS.sendTextData conn $ encodeJson $ RoomCreated uuid
                                     return s'
-                                JoinRoom id -> readMVar state >>= broadcast "Joining a room"
-                                LeaveRoom id -> readMVar state >>= broadcast "Leaving a room"
-                                ListAllRooms -> readMVar state >>= broadcast "Listing all rooms"
-                                ListRoomMembers roomId -> readMVar state >>= broadcast "Listing all room members"
-                                SendMsgRoom id msg -> readMVar state >>= broadcast "Sending the room a message"
+                                JoinRoom roomId' -> modifyMVar_ mVarState $ \s -> do
+                                    let s' = joinRoom userId' roomId' s
+                                    flip broadcast s' $ encodeJson$ UserJoinedRoom roomId' userId'
+                                    return s'
+                                LeaveRoom roomId' -> modifyMVar_ mVarState $ \s -> do
+                                    let s' = leaveRoom userId' roomId' s
+                                    flip broadcast s' $ encodeJson $ UserLeftRoom roomId' userId'
+                                    return s'
+                                ListAllRooms -> do 
+                                    s <- readMVar mVarState
+                                    let rooms = (\r -> RoomExport { roomExportId = (roomId r), roomExportName = (roomName r) }) <$> listAllRooms s
+                                    WS.sendTextData conn $ encodeJson $ ListOfRooms rooms
+                                ListRoomMembers roomId' -> do 
+                                    s <- readMVar mVarState
+                                    let users = (\u -> UserExport { userExportId = (userId u), userExportName = (userName u) }) <$> listRoomMembers roomId' s
+                                    WS.sendTextData conn $ encodeJson $ ListOfUsers users
+                                SendMsgRoom roomId' msg -> do 
+                                    s <- readMVar mVarState
+                                    sendRoomMessage userId' roomId' msg s
         Nothing -> WS.sendTextData conn $ ("Error" :: Text)
-
-    -- readMVar state >>= broadcast
-    --     (user `mappend` ": " `mappend` msg)
-
-    {-
-    data Action 
-    | CreateRoom Text
-    | JoinRoom UUID
-    | LeaveRoom UUID
-    | ListAllRooms
-    | ListRoomMembers UUID
-    | SendMsgRoom UUID Text
-    deriving (Generic, Show)
-    -}
+        where 
+            encodeJson = T.decodeUtf8 . BS.toStrict . encode

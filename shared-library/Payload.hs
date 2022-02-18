@@ -11,8 +11,8 @@ data Connect = Connect {
     loginName :: Text
 } deriving (Generic, Show)
 
-instance FromJSON Connect
 instance ToJSON Connect
+instance FromJSON Connect
 
 data Action 
     = CreateRoom Text
@@ -22,29 +22,33 @@ data Action
     | ListRoomMembers UUID
     | SendMsgRoom UUID Text
     deriving (Generic, Show)
-
-instance FromJSON Action
 instance ToJSON Action
+instance FromJSON Action
 
-data Response
+data RoomExport = RoomExport {
+    roomExportId :: UUID,
+    roomExportName :: Text
+} deriving (Generic, Show)
+
+instance ToJSON RoomExport
+
+data UserExport = UserExport {
+    userExportId :: UUID,
+    userExportName :: Text
+} deriving (Generic, Show)
+
+instance ToJSON UserExport
+
+data ServerMessage
     = UserLoggedIn UUID
-    | UserMessageToRoom UUID Text
-    | UserJoinedRoom UUID
     | UserCreated UUID
-    | ListOfUsers [Text]
+    | ListOfUsers [UserExport]
     | RoomCreated UUID
+    | ListOfRooms [RoomExport]
+    | RoomMessage {toRoom :: UUID, fromUser :: Text, msg :: Text}
+    | UserJoinedRoom {toRoom :: UUID, userWhoJoined :: UUID}
+    | UserLeftRoom {toRoom :: UUID, userWhoJoined :: UUID}
+    | Error Text
     deriving (Generic, Show)
 
-instance FromJSON Response
-instance ToJSON Response
-
-data IrcRequest = IrcRequest { action :: Action } deriving (Generic, Show)
-
-instance FromJSON IrcRequest
-instance ToJSON IrcRequest
-
-
-data IrcResponse = IrcResponse {response :: Response} deriving (Generic, Show)
-
-instance FromJSON IrcResponse
-instance ToJSON IrcResponse
+instance ToJSON ServerMessage
