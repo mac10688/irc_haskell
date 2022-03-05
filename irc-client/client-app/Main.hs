@@ -12,7 +12,7 @@ import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified Data.Text.IO        as T
 import qualified Network.WebSockets  as WS
-import           Payload
+import           Requests
 import           Data.Aeson
 
 
@@ -21,7 +21,7 @@ app :: WS.ClientApp ()
 app conn = do
     putStrLn "Connected!"
 
-    let connect = encode $ Connect "Scoot"
+    let connect = encode $ Login "Scoot"
     WS.sendTextData conn connect
 
     -- Fork a thread that writes WS data to stdout
