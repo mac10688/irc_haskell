@@ -9,16 +9,26 @@ import Control.Applicative (empty)
 data RoomExport = RoomExport {
     roomExportId :: UUID,
     roomExportName :: Text
-} deriving (Generic, Show)
-instance FromJSON RoomExport
-instance ToJSON RoomExport
+} deriving (Eq, Show)
+
+instance FromJSON RoomExport where
+    parseJSON (Object o) = RoomExport <$> o .: "roomId" <*> o .: "roomName"
+    parseJSON _ = empty
+
+instance ToJSON RoomExport where
+    toJSON (RoomExport id name) = object ["roomId" .= id, "roomName" .= name]
 
 data UserExport = UserExport {
     userExportId :: UUID,
     userExportName :: Text
-} deriving (Generic, Show)
-instance FromJSON UserExport
-instance ToJSON UserExport
+} deriving (Eq, Show)
+
+instance FromJSON UserExport where
+    parseJSON (Object o) = UserExport <$> o .: "userId" <*> o .: "username"
+    parseJSON _ = empty
+
+instance ToJSON UserExport where
+    toJSON (UserExport id name) = object ["userId" .= id, "username" .= name]
 
 data RequestStatus = Success | Failure Text
 

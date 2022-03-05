@@ -36,4 +36,4 @@ main = hspec $ do
       let user1 = Resp.UserExport {userExportId = userId1, userExportName="Bob"}
       let userId2 = fromJust $ fromString "eb3e9255-991c-4b0b-98ba-712cb1a0d3cd"
       let user2 = Resp.UserExport {userExportId = userId2, userExportName="Alice"}
-      encode (Resp.ListOfUsers [user1, user2]) `shouldBe` "{\"response\":\"LIST_OF_USERS\",\"users\":[{\"userExportId\":\"eb3e9255-991c-4b0b-98ba-712cb1a0d3cf\",\"userExportName\":\"Bob\"},{\"userExportId\":\"eb3e9255-991c-4b0b-98ba-712cb1a0d3cd\",\"userExportName\":\"Alice\"}]}"
+      encode (Resp.ListOfUsers [user1, user2]) `shouldBe` "{\"response\":\"LIST_OF_USERS\",\"users\":[{\"userId\":\"eb3e9255-991c-4b0b-98ba-712cb1a0d3cf\",\"username\":\"Bob\"},{\"userId\":\"eb3e9255-991c-4b0b-98ba-712cb1a0d3cd\",\"username\":\"Alice\"}]}"
