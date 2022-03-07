@@ -156,9 +156,15 @@ sendRoomMessage state fromUserId toRoomId msg' =
         userIdList = S.toList $(M.findWithDefault S.empty toRoomId $ (roomToUserMappings state) :: S.Set UUID)
         userMap = users state :: M.Map UUID User
         userList = catMaybes $ Prelude.map (\userId' -> (M.lookup userId' userMap)) userIdList
-        jsonMessage = encode $ Broadcasts.RoomMessage {roomId=toRoomId, userId=fromUserId, msg = msg' }
+        fromUserName = userName <$> M.lookup fromUserId userMap
     in do
-        forM_ userList $ \user -> WS.sendTextData (connection user) jsonMessage
+        case fromUserName of
+            Just uname -> 
+                let 
+                    jsonMessage = encode $ Broadcasts.RoomMessage {roomId=toRoomId, userId=fromUserId, username=uname, msg = msg' }
+                in
+                    forM_ userList $ \user -> WS.sendTextData (connection user) jsonMessage
+            Nothing -> return ()
 
 broadcast :: ServerState -> Text -> IO ()
 broadcast state message = do
@@ -243,7 +249,7 @@ application mVarState pending = do
 talk :: UUID -> WS.Connection -> MVar ServerState -> IO ()
 talk userId' conn mVarState = forever $ do
     msg <- WS.receiveData conn
-    actionM <- return $ (decode msg :: Maybe Requests.Request)
+    let actionM = (decode msg :: Maybe Requests.Request)
     case actionM of
         Just (action) -> 
             case action of

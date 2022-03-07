@@ -7,7 +7,7 @@ import Data.Aeson
 import Control.Applicative (empty)
 
 data Broadcast =
-      RoomMessage {roomId :: UUID, userId :: UUID, msg :: Text}
+      RoomMessage {roomId :: UUID, userId :: UUID, username :: Text, msg :: Text}
     | UserJoinedRoom {roomId :: UUID, userId :: UUID}
     | UserLeftRoom {roomId :: UUID, userId :: UUID}
     | RoomDestroyed UUID
@@ -19,7 +19,7 @@ instance FromJSON Broadcast where
         do 
         oc <- o .: "broadcast"
         case oc of
-            String "ROOM_MESSAGE" ->  RoomMessage <$> o .: "roomId" <*> o .: "userId" <*> o .: "msg"
+            String "ROOM_MESSAGE" ->  RoomMessage <$> o .: "roomId" <*> o .: "userId" <*> o .: "username" <*> o .: "msg"
             String "USER_JOINED_ROOM" ->  UserJoinedRoom <$> o .: "roomId" <*> o .: "userId"
             String "USER_LEFT_ROOM" -> UserLeftRoom <$> o .: "roomId" <*> o .: "userId"
             String "ROOM_DESTROYED" -> RoomDestroyed <$> o .: "roomId"
@@ -28,7 +28,7 @@ instance FromJSON Broadcast where
     parseJSON _ = empty
 
 instance ToJSON Broadcast where
-    toJSON (RoomMessage roomId' userId' msg') = object ["broadcast" .= ("ROOM_MESSAGE" :: Value), "roomId" .= roomId', "userId" .= userId', "msg" .= msg']
+    toJSON (RoomMessage roomId' userId' username' msg') = object ["broadcast" .= ("ROOM_MESSAGE" :: Value), "roomId" .= roomId', "userId" .= userId', "username" .= username', "msg" .= msg']
     toJSON (UserJoinedRoom roomId' userId') = object ["broadcast" .= ("USER_JOINED_ROOM" :: Value), "roomId" .= roomId', "userId" .= userId']
     toJSON (UserLeftRoom roomId' userId') = object ["broadcast" .= ("USER_LEFT_ROOM" :: Value), "roomId" .= roomId', "userId" .= userId']
     toJSON (RoomDestroyed roomId') = object ["broadcast" .= ("ROOM_DESTROYED" :: Value), "roomId" .= roomId']
