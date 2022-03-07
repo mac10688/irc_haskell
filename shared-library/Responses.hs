@@ -38,7 +38,7 @@ data Response
     | RoomMsgSent
     | ListOfUsers UUID [UserExport]
     | RoomCreated UUID Text
-    | RoomJoined UUID
+    | RoomJoined UUID [UserExport]
     | RoomLeft UUID
     | ListOfRooms [RoomExport]
     | RoomDestroyed UUID
@@ -55,7 +55,7 @@ instance FromJSON Response where
             String "SEND_ROOM_MSG" -> return RoomMsgSent
             String "LIST_OF_USERS" -> ListOfUsers <$> o .: "roomId" <*> o .: "users" 
             String "ROOM_CREATED" ->  RoomCreated <$> o .: "roomId" <*> o .: "roomName"
-            String "ROOM_JOINED" -> RoomJoined <$> o .: "roomId"
+            String "ROOM_JOINED" -> RoomJoined <$> o .: "roomId" <*> o .: "users"
             String "ROOM_LEFT" -> RoomLeft <$> o .: "roomId"
             String "LIST_OF_ROOMS" -> ListOfRooms <$> o .: "rooms"
             String "ROOM_DESTROYED" -> RoomDestroyed <$> o .: "roomId"
@@ -69,7 +69,7 @@ instance ToJSON Response where
     toJSON (RoomMsgSent) = object ["response" .= ("SEND_ROOM_MSG" :: Value)]
     toJSON (ListOfUsers roomId' users) = object ["response" .= ("LIST_OF_USERS" :: Value), "roomId" .= roomId', "users" .= users]
     toJSON (RoomCreated roomId roomName) = object ["response" .= ("ROOM_CREATED" :: Value), "roomId" .= roomId, "roomName" .= roomName]
-    toJSON (RoomJoined roomId) = object ["response" .= ("ROOM_JOINED" :: Value), "roomId" .= roomId]
+    toJSON (RoomJoined roomId users) = object ["response" .= ("ROOM_JOINED" :: Value), "roomId" .= roomId, "users" .= users]
     toJSON (RoomLeft roomId) = object ["response" .= ("ROOM_LEFT" :: Value), "roomId" .= roomId]
     toJSON (ListOfRooms rooms) = object ["response" .= ("LIST_OF_ROOMS" :: Value), "rooms" .= rooms]
     toJSON (RoomDestroyed roomId) = object ["response" .= ("ROOM_DESTROYED" :: Value), "roomId" .= roomId]
