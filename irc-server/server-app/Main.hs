@@ -150,8 +150,8 @@ listRoomMembers id state =
         userList = catMaybes $ Prelude.map (\userId' ->  (M.lookup userId' userMap)) userIdList
     in userList
 
-sendRoomMessage :: UUID -> UUID -> Text -> ServerState -> IO ()
-sendRoomMessage fromUserId toRoomId msg' state =
+sendRoomMessage :: ServerState -> UUID -> UUID -> Text -> IO ()
+sendRoomMessage state fromUserId toRoomId msg' =
     let
         userIdList = S.toList $(M.findWithDefault S.empty toRoomId $ (roomToUserMappings state) :: S.Set UUID)
         userMap = users state :: M.Map UUID User
@@ -164,31 +164,28 @@ broadcast :: ServerState -> Text -> IO ()
 broadcast state message = do
     forM_ (M.elems (users state)) $ \user -> WS.sendTextData (connection user) message
 
-sendToUser :: UUID -> Text -> ServerState -> IO ()
-sendToUser userId' msg state = 
-    let
-        userM = M.lookup userId' (users state)
-    in
-        case userM of
-            Just (user) -> WS.sendTextData (connection user) msg
-            Nothing -> return ()
+respondToUser :: WS.Connection -> Responses.Response -> IO ()
+respondToUser conn response = WS.sendTextData conn $ encodeJson response
 
-broadcastToRoom :: UUID -> ServerState -> Text -> IO ()
-broadcastToRoom toRoomId state msg  =
+broadcastToRoom :: ServerState -> UUID -> Broadcasts.Broadcast -> IO ()
+broadcastToRoom state toRoomId broadcast  =
     let
         userIdList = S.toList $(M.findWithDefault S.empty toRoomId $ (roomToUserMappings state) :: S.Set UUID)
         userMap = users state :: M.Map UUID User
         userList = catMaybes $ Prelude.map (\userId' -> (M.lookup userId' userMap)) userIdList
     in do
-        forM_ userList $ \user -> WS.sendTextData (connection user) msg
+        forM_ userList $ \user -> WS.sendTextData (connection user) (encode broadcast)
 
-broadcastExceptToUser :: ServerState -> UUID -> Text -> IO ()
-broadcastExceptToUser state fromUserId msg  =
-    forM_ (Prelude.filter (\u -> (userId u) /= fromUserId) $ M.elems (users state)) $ \user -> WS.sendTextData (connection user) msg
+broadcastExceptToUser :: ServerState -> UUID -> Broadcasts.Broadcast -> IO ()
+broadcastExceptToUser state fromUserId broadcast  =
+    forM_ (Prelude.filter (\u -> (userId u) /= fromUserId) $ M.elems (users state)) $ \user -> WS.sendTextData (connection user) (encode broadcast)
+
+encodeJson :: ToJSON a => a -> Text
+encodeJson = T.decodeUtf8 . BS.toStrict . encode
 
 main :: IO ()
 main = do
-    putStrLn "Starting server"
+    say "Starting server"
     state <- newMVar newServerState
     WS.runServer "127.0.0.1" 8765 $ application state
 
@@ -206,7 +203,7 @@ main = do
 application :: MVar ServerState -> WS.ServerApp
 application mVarState pending = do
     conn <- WS.acceptRequest pending
-    putStrLn "Someone is reaching out"
+    sayString "Someone is reaching out"
     WS.withPingThread conn 30 (return ()) $ do
         msg <- WS.receiveData conn
         say $ T.decodeUtf8 $ BS.toStrict $ msg
@@ -215,21 +212,21 @@ application mVarState pending = do
         userId <- createUUID
         case requsetM of
             Just (Requests.Login name)
-                       | any ($ name)
-                            [T.null, T.any isPunctuation, T.any isSpace] ->
-                                WS.sendClose conn ("Name cannot " <>
-                                    "contain punctuation or whitespace, and " <>
-                                    "cannot be empty" :: Text)
-                        | nameTaken name state ->
-                            WS.sendClose conn ("User already exists" :: Text)
-                        | otherwise -> 
-                            
-                            flip finally (disconnect userId) $ do
-                            modifyMVar_ mVarState $ \s -> do
-                                
-                                let s' = addUser userId name conn s
-                                return s'
-                            talk userId conn mVarState
+                | any ($ name)
+                    [T.null, T.any isPunctuation, T.any isSpace] ->
+                        WS.sendClose conn ("Name cannot " <>
+                            "contain punctuation or whitespace, and " <>
+                            "cannot be empty" :: Text)
+                | nameTaken name state ->
+                    WS.sendClose conn ("User already exists" :: Text)
+                | otherwise -> 
+                    flip finally (disconnect userId) $ do
+                    modifyMVar_ mVarState $ \s -> do
+                        
+                        let s' = addUser userId name conn s
+                        respondToUser conn $ Responses.UserLoggedIn userId
+                        return s'
+                    talk userId conn mVarState
             Just _ -> WS.sendClose conn ("Expected a login request. Reconnect and try again." :: Text)
             Nothing -> do
                 putStrLn "Someone tried joining but didn't send the correct format"
@@ -248,46 +245,44 @@ talk userId' conn mVarState = forever $ do
     msg <- WS.receiveData conn
     actionM <- return $ (decode msg :: Maybe Requests.Request)
     case actionM of
-        Just (action) -> case action of
-                                Requests.Logout -> modifyMVar_ mVarState $ \s -> do
-                                    let s' = logoutUser userId' s
-                                    let roomsLoggingOutOf = S.toList $ M.findWithDefault S.empty userId' $ userToRoomMappings s
-                                    broadcastExceptToUser s' userId' $ encodeJson $ Broadcasts.UserLoggedOut userId' roomsLoggingOutOf
-                                    WS.sendClose conn $ encodeJson $ Responses.UserLoggedOut userId'
-                                    return s'
-                                Requests.CreateRoom name -> modifyMVar_ mVarState $ \s -> do
-                                    roomId' <- createUUID
-                                    let s' = createRoom roomId' name s
-                                    WS.sendTextData conn $ encodeJson $ Responses.RoomCreated roomId' name
-                                    return s'
-                                Requests.JoinRoom roomId' -> modifyMVar_ mVarState $ \s -> do
-                                    let s' = joinRoom userId' roomId' s
-                                    broadcastToRoom roomId' s $ encodeJson $ Broadcasts.UserJoinedRoom {roomId=roomId', userId=userId'}
-                                    WS.sendTextData conn $ encodeJson $ Responses.RoomJoined roomId'
-                                    return s'
-                                Requests.LeaveRoom roomId' -> modifyMVar_ mVarState $ \s -> do
-                                    let s' = leaveRoom userId' roomId' s
-                                    broadcastToRoom roomId' s' $ encodeJson $ Broadcasts.UserLeftRoom {roomId=roomId', userId=userId'}
-                                    WS.sendTextData conn $ encodeJson $ Responses.RoomLeft roomId'
-                                    return s'
-                                Requests.ListAllRooms -> do 
-                                    s <- readMVar mVarState
-                                    let rooms = (\r -> Responses.RoomExport { roomExportId = (roomId r), roomExportName = (roomName r) }) <$> listAllRooms s
-                                    WS.sendTextData conn $ encodeJson $ Responses.ListOfRooms rooms
-                                Requests.ListRoomMembers roomId' -> do 
-                                    s <- readMVar mVarState
-                                    let users = (\u -> Responses.UserExport { userExportId = (userId u), userExportName = (userName u) }) <$> listRoomMembers roomId' s
-                                    WS.sendTextData conn $ encodeJson $ Responses.ListOfUsers users
-                                Requests.SendMsgRoom roomId' msg -> do 
-                                    s <- readMVar mVarState
-                                    sendRoomMessage userId' roomId' msg s
-                                Requests.DestroyRoom roomId' -> modifyMVar_ mVarState $ \s -> do
-                                    let s' = destroyRoom roomId' s
-                                    broadcastToRoom roomId' s' $ encodeJson $ Broadcasts.RoomDestroyed roomId'
-                                    WS.sendTextData conn $ encodeJson $ Responses.RoomDestroyed roomId'
-                                    return s'
-                                Requests.Login _ -> WS.sendTextData conn $ ("Error" :: Text)
+        Just (action) -> 
+            case action of
+                Requests.Logout -> modifyMVar_ mVarState $ \oldState -> do
+                    let newState = logoutUser userId' oldState
+                    let roomsLoggingOutOf = S.toList $ M.findWithDefault S.empty userId' $ userToRoomMappings oldState
+                    broadcastExceptToUser newState userId' $ Broadcasts.UserLoggedOut userId' roomsLoggingOutOf
+                    respondToUser conn $ Responses.UserLoggedOut userId'
+                    return newState
+                Requests.CreateRoom name -> modifyMVar_ mVarState $ \s -> do
+                    roomId' <- createUUID
+                    let s' = createRoom roomId' name s
+                    respondToUser conn $ Responses.RoomCreated roomId' name
+                    return s'
+                Requests.JoinRoom roomId' -> modifyMVar_ mVarState $ \s -> do
+                    let s' = joinRoom userId' roomId' s
+                    broadcastToRoom s roomId' $ Broadcasts.UserJoinedRoom {roomId=roomId', userId=userId'}
+                    respondToUser conn $ Responses.RoomJoined roomId'
+                    return s'
+                Requests.LeaveRoom roomId' -> modifyMVar_ mVarState $ \s -> do
+                    let s' = leaveRoom userId' roomId' s
+                    broadcastToRoom s' roomId' $ Broadcasts.UserLeftRoom {roomId=roomId', userId=userId'}
+                    respondToUser conn $ Responses.RoomLeft roomId'
+                    return s'
+                Requests.ListAllRooms -> do 
+                    s <- readMVar mVarState
+                    let rooms = (\r -> Responses.RoomExport { roomExportId = (roomId r), roomExportName = (roomName r) }) <$> listAllRooms s
+                    respondToUser conn $ Responses.ListOfRooms rooms
+                Requests.ListRoomMembers roomId' -> do 
+                    s <- readMVar mVarState
+                    let users = (\u -> Responses.UserExport { userExportId = (userId u), userExportName = (userName u) }) <$> listRoomMembers roomId' s
+                    respondToUser conn $ Responses.ListOfUsers users
+                Requests.SendMsgRoom roomId' msg -> do 
+                    s <- readMVar mVarState
+                    sendRoomMessage s userId' roomId' msg 
+                Requests.DestroyRoom roomId' -> modifyMVar_ mVarState $ \s -> do
+                    let s' = destroyRoom roomId' s
+                    broadcastToRoom s' roomId' $ Broadcasts.RoomDestroyed roomId'
+                    respondToUser conn $ Responses.RoomDestroyed roomId'
+                    return s'
+                Requests.Login _ -> respondToUser conn $ Responses.Error "User is already logged in."
         Nothing -> WS.sendTextData conn $ ("Error" :: Text)
-        where
-            encodeJson :: ToJSON a => a -> Text
-            encodeJson = T.decodeUtf8 . BS.toStrict . encode
