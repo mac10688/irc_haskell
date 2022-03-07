@@ -21,12 +21,12 @@ import Data.Set as S
 import Data.Maybe
 import Data.Monoid
 import Say
-
 import qualified Network.WebSockets as WS
+
 data Room = Room {
     roomId :: UUID,
     roomName :: Text
-}
+} deriving (Show)
 
 data User = User {
     userId :: UUID,
@@ -108,7 +108,8 @@ createRoom id name state =
     let 
         rooms' = M.insert id (Room id name) $ rooms state 
         usedRoomName' = S.insert name $ usedRoomNames state
-    in state { rooms = rooms', usedRoomNames = usedRoomName' }
+        roomToUserMappings' = M.insert id S.empty $ roomToUserMappings state
+    in state { rooms = rooms', usedRoomNames = usedRoomName', roomToUserMappings = roomToUserMappings' }
 
 destroyRoom :: UUID -> ServerState -> ServerState
 destroyRoom roomId state =
@@ -162,9 +163,9 @@ sendRoomMessage state fromUserId toRoomId msg' =
             Just uname -> 
                 let 
                     jsonMessage = encode $ Broadcasts.RoomMessage {roomId=toRoomId, userId=fromUserId, username=uname, msg = msg' }
-                in
+                in do
                     forM_ userList $ \user -> WS.sendTextData (connection user) jsonMessage
-            Nothing -> return ()
+            Nothing -> putStrLn "No username found" 
 
 broadcast :: ServerState -> Text -> IO ()
 broadcast state message = do
@@ -265,7 +266,9 @@ talk userId' conn mVarState = forever $ do
                     respondToUser conn $ Responses.RoomCreated roomId' name
                     return s'
                 Requests.JoinRoom roomId' -> modifyMVar_ mVarState $ \s -> do
+                    print (roomToUserMappings s)
                     let s' = joinRoom userId' roomId' s
+                    print (roomToUserMappings s')
                     let username' = fromJust $ userName <$> M.lookup userId' (users s)
                     broadcastToRoom s roomId' $ Broadcasts.UserJoinedRoom {roomId=roomId', userId=userId', username=username'}
                     let users = (\u -> Responses.UserExport { userExportId = (userId u), userExportName = (userName u) }) <$> listRoomMembers roomId' s'

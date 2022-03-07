@@ -50,15 +50,15 @@ main = hspec $ do
         encode Req.Logout `shouldBe` "{\"request\":\"LOGOUT\"}"
       it "Can encode send room msg" $ do
         let expectedUUID = fromJust $ fromString "eb3e9255-991c-4b0b-98ba-712cb1a0d3cf"
-        encode (Req.SendMsgRoom expectedUUID "Test") `shouldBe` "{\"request\":\"SEND_ROOM_MSG\",\"roomId\":\"eb3e9255-991c-4b0b-98ba-712cb1a0d3cf\",\"data\":\"Test\"}"
+        encode (Req.SendMsgRoom expectedUUID "Test") `shouldBe` "{\"data\":\"Test\",\"request\":\"SEND_ROOM_MSG\",\"roomId\":\"eb3e9255-991c-4b0b-98ba-712cb1a0d3cf\"}"
       it "Can encode create room" $ do
         encode (Req.CreateRoom "Test room name") `shouldBe` "{\"request\":\"CREATE_ROOM\",\"room_name\":\"Test room name\"}"
       it "Can encode join room" $ do
         let expectedUUID = fromJust $ fromString "eb3e9255-991c-4b0b-98ba-712cb1a0d3cf"
         encode (Req.JoinRoom expectedUUID) `shouldBe` "{\"request\":\"JOIN_ROOM\",\"roomId\":\"eb3e9255-991c-4b0b-98ba-712cb1a0d3cf\"}"
-      it "Can encode join room" $ do
+      it "Can encode leave room" $ do
         let expectedUUID = fromJust $ fromString "eb3e9255-991c-4b0b-98ba-712cb1a0d3cf"
-        encode (Req.JoinRoom expectedUUID) `shouldBe` "{\"request\":\"JOIN_ROOM\",\"roomId\":\"eb3e9255-991c-4b0b-98ba-712cb1a0d3cf\"}"
+        encode (Req.LeaveRoom expectedUUID) `shouldBe` "{\"request\":\"LEAVE_ROOM\",\"roomId\":\"eb3e9255-991c-4b0b-98ba-712cb1a0d3cf\"}"
   
   describe "Responses" $ do
     it "Can encode UserLoggedIn" $ do
