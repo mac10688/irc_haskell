@@ -281,7 +281,7 @@ talk userId' conn mVarState = forever $ do
                 Requests.ListRoomMembers roomId' -> do 
                     s <- readMVar mVarState
                     let users = (\u -> Responses.UserExport { userExportId = (userId u), userExportName = (userName u) }) <$> listRoomMembers roomId' s
-                    respondToUser conn $ Responses.ListOfUsers users
+                    respondToUser conn $ Responses.ListOfUsers roomId' users
                 Requests.SendMsgRoom roomId' msg -> do 
                     s <- readMVar mVarState
                     sendRoomMessage s userId' roomId' msg 
