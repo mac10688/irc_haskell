@@ -228,10 +228,6 @@ application mVarState pending = do
                             modifyMVar_ mVarState $ \s -> do
                                 
                                 let s' = addUser userId name conn s
-                                -- WS.sendTextData conn $
-                                --      "Welcome! Users: " <>
-                                --      T.intercalate ", " (M.map fst s)
-                                broadcast s' (name <> " joined") 
                                 return s'
                             talk userId conn mVarState
             Just _ -> WS.sendClose conn ("Expected a login request. Reconnect and try again." :: Text)
@@ -244,7 +240,6 @@ application mVarState pending = do
                 s <- modifyMVar mVarState $ \s ->
                     let s' = removeUser userId s in return (s', s')
                 return s
-                -- broadcast ((" disconnected" :: Text)) s
 
 -- The talk function continues to read messages from a single user until he
 -- disconnects. All messages are broadcasted to the other users.
@@ -263,11 +258,11 @@ talk userId' conn mVarState = forever $ do
                                 Requests.CreateRoom name -> modifyMVar_ mVarState $ \s -> do
                                     roomId' <- createUUID
                                     let s' = createRoom roomId' name s
-                                    WS.sendTextData conn $ encodeJson $ Responses.RoomCreated roomId'
+                                    WS.sendTextData conn $ encodeJson $ Responses.RoomCreated roomId' name
                                     return s'
                                 Requests.JoinRoom roomId' -> modifyMVar_ mVarState $ \s -> do
                                     let s' = joinRoom userId' roomId' s
-                                    broadcastToRoom roomId' s' $ encodeJson $ Broadcasts.UserJoinedRoom {roomId=roomId', userId=userId'}
+                                    broadcastToRoom roomId' s $ encodeJson $ Broadcasts.UserJoinedRoom {roomId=roomId', userId=userId'}
                                     WS.sendTextData conn $ encodeJson $ Responses.RoomJoined roomId'
                                     return s'
                                 Requests.LeaveRoom roomId' -> modifyMVar_ mVarState $ \s -> do
