@@ -185,7 +185,7 @@ encodeJson = T.decodeUtf8 . BS.toStrict . encode
 
 main :: IO ()
 main = do
-    say "Starting server"
+    putStrLn "Starting server"
     state <- newMVar newServerState
     WS.runServer "127.0.0.1" 8765 $ application state
 
@@ -203,7 +203,7 @@ main = do
 application :: MVar ServerState -> WS.ServerApp
 application mVarState pending = do
     conn <- WS.acceptRequest pending
-    sayString "Someone is reaching out"
+    putStrLn "Someone is reaching out"
     WS.withPingThread conn 30 (return ()) $ do
         msg <- WS.receiveData conn
         say $ T.decodeUtf8 $ BS.toStrict $ msg
