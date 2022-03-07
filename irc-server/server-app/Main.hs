@@ -266,7 +266,8 @@ talk userId' conn mVarState = forever $ do
                     return s'
                 Requests.JoinRoom roomId' -> modifyMVar_ mVarState $ \s -> do
                     let s' = joinRoom userId' roomId' s
-                    broadcastToRoom s roomId' $ Broadcasts.UserJoinedRoom {roomId=roomId', userId=userId'}
+                    let username' = fromJust $ userName <$> M.lookup userId' (users s)
+                    broadcastToRoom s roomId' $ Broadcasts.UserJoinedRoom {roomId=roomId', userId=userId', username=username'}
                     let users = (\u -> Responses.UserExport { userExportId = (userId u), userExportName = (userName u) }) <$> listRoomMembers roomId' s'
                     respondToUser conn $ Responses.RoomJoined roomId' users
                     return s'

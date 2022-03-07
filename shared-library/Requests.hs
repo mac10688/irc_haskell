@@ -38,7 +38,7 @@ instance FromJSON Request where
 instance ToJSON Request where
     toJSON (Login name) = object ["request" .= String "LOGIN", "username" .= name]
     toJSON (Logout) = object ["request" .= ("LOGOUT" :: Value)]
-    toJSON (SendMsgRoom roomId msg) = object ["request" .= ("SEND_ROOM_MESSAGE" :: Value), "roomId" .= roomId, "data" .= msg]
+    toJSON (SendMsgRoom roomId msg) = object ["request" .= ("SEND_ROOM_MSG" :: Value), "roomId" .= roomId, "data" .= msg]
     toJSON (CreateRoom name) = object ["request" .= ("CREATE_ROOM" :: Value), "room_name" .= name]
     toJSON (JoinRoom roomId) = object ["request" .= ("JOIN_ROOM" :: Value), "roomId" .= roomId]
     toJSON (LeaveRoom roomId) = object ["request" .= ("LEAVE_ROOM" :: Value), "roomId" .= roomId]
