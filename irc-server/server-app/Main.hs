@@ -1,4 +1,5 @@
 module Main where
+
 import Data.Char (isPunctuation, isSpace)
 import Data.Monoid (mappend)
 import Data.Text (Text)
@@ -18,9 +19,9 @@ import Data.Aeson
 import Data.Set as S
 import Data.Maybe
 import Data.Monoid
-import Say
 import qualified Network.WebSockets as WS
 import Domain
+import qualified Control.Logging as Log
 
 data Room = Room {
     roomId :: RoomId,
@@ -158,17 +159,23 @@ sendRoomMessage state fromUserId toRoomId msg' =
         case fromUserName of
             Just uname -> 
                 let 
-                    jsonMessage = encode $ Broadcasts.RoomMessage {roomId=toRoomId, userId=fromUserId, username=uname, msg = msg' }
+                    jsonMessage = encodeJson $ Broadcasts.RoomMessage {roomId=toRoomId, userId=fromUserId, username=uname, msg = msg' }
                 in do
+                    Log.log jsonMessage
                     forM_ userList $ \user -> WS.sendTextData (connection user) jsonMessage
-            Nothing -> putStrLn "No username found" 
+            Nothing -> Log.log "No username found" 
 
 broadcast :: ServerState -> Text -> IO ()
 broadcast state message = do
+    Log.log message
     forM_ (M.elems (users state)) $ \user -> WS.sendTextData (connection user) message
 
 respondToUser :: WS.Connection -> Responses.Response -> IO ()
-respondToUser conn response = WS.sendTextData conn $ encodeJson response
+respondToUser conn response = 
+    do
+        let msg = encodeJson response
+        Log.log msg
+        WS.sendTextData conn $ msg
 
 broadcastToRoom :: ServerState -> RoomId -> Broadcasts.Broadcast -> IO ()
 broadcastToRoom state toRoomId broadcast  =
@@ -176,8 +183,10 @@ broadcastToRoom state toRoomId broadcast  =
         userIdList = S.toList $(M.findWithDefault S.empty toRoomId $ (roomToUserMappings state) :: S.Set UserId)
         userMap = users state :: M.Map UserId User
         userList = catMaybes $ Prelude.map (\userId' -> (M.lookup userId' userMap)) userIdList
+        msg = encodeJson broadcast
     in do
-        forM_ userList $ \user -> WS.sendTextData (connection user) (encode broadcast)
+        Log.log msg
+        forM_ userList $ \user -> WS.sendTextData (connection user) msg
 
 broadcastToRoomExceptUser :: ServerState -> RoomId -> UserId -> Broadcasts.Broadcast -> IO ()
 broadcastToRoomExceptUser state toRoomId exceptUserId broadcast =
@@ -185,19 +194,25 @@ broadcastToRoomExceptUser state toRoomId exceptUserId broadcast =
         userIdList = S.toList $ S.filter (/= exceptUserId) $(M.findWithDefault S.empty toRoomId $ (roomToUserMappings state) :: S.Set UserId)
         userMap = users state :: M.Map UserId User
         userList = catMaybes $ Prelude.map (\userId' -> (M.lookup userId' userMap)) userIdList
+        msg = encodeJson broadcast
     in do
-        forM_ userList $ \user -> WS.sendTextData (connection user) (encode broadcast)
+        Log.log msg
+        forM_ userList $ \user -> WS.sendTextData (connection user) msg
 
 broadcastExceptToUser :: ServerState -> UserId -> Broadcasts.Broadcast -> IO ()
 broadcastExceptToUser state fromUserId broadcast  =
-    forM_ (Prelude.filter (\u -> (userId u) /= fromUserId) $ M.elems (users state)) $ \user -> WS.sendTextData (connection user) (encode broadcast)
+    let
+        msg = encodeJson broadcast
+    in do
+        Log.log msg
+        forM_ (Prelude.filter (\u -> (userId u) /= fromUserId) $ M.elems (users state)) $ \user -> WS.sendTextData (connection user) msg
 
 encodeJson :: ToJSON a => a -> Text
 encodeJson = T.decodeUtf8 . BS.toStrict . encode
 
 main :: IO ()
-main = do
-    putStrLn "Starting server"
+main = Log.withStdoutLogging $ do
+    Log.log "Starting server"
     state <- newMVar newServerState
     WS.runServer "127.0.0.1" 8765 $ application state
 
@@ -218,7 +233,7 @@ application mVarState pending = do
     putStrLn "Someone is reaching out"
     WS.withPingThread conn 30 (return ()) $ do
         msg <- WS.receiveData conn
-        say $ T.decodeUtf8 $ BS.toStrict $ msg
+        Log.log $ T.decodeUtf8 $ BS.toStrict $ msg
         state <- readMVar mVarState
         let requsetM = (decode msg :: Maybe Requests.Request)
         userId <- createUserId
@@ -255,7 +270,7 @@ application mVarState pending = do
 talk :: UserId -> WS.Connection -> MVar ServerState -> IO ()
 talk userId' conn mVarState = forever $ do
     msg <- WS.receiveData conn
-    -- putStrLn $ ("Message received: " :: Text) <> (T.decodeUtf8 . BS.toStrict $ msg)
+    Log.log $ ("Message received: " :: Text) <> (T.decodeUtf8 . BS.toStrict $ msg)
     let actionM = (decode msg :: Maybe Requests.Request)
     case actionM of
         Just (action) -> 
