@@ -2,16 +2,16 @@ module Broadcasts where
 
 import Data.Text (Text)
 import GHC.Generics
-import Data.UUID
 import Data.Aeson
 import Control.Applicative (empty)
+import Domain
 
 data Broadcast =
-      RoomMessage {roomId :: UUID, userId :: UUID, username :: Text, msg :: Text}
-    | UserJoinedRoom {roomId :: UUID, userId :: UUID, username :: Text}
-    | UserLeftRoom {roomId :: UUID, userId :: UUID}
-    | RoomDestroyed UUID
-    | UserLoggedOut {id :: UUID, roomsLoggingOut :: [UUID]} deriving (Generic)
+      RoomMessage {roomId :: RoomId, userId :: UserId, username :: Text, msg :: Text}
+    | UserJoinedRoom {roomId :: RoomId, userId :: UserId, username :: Text}
+    | UserLeftRoom {roomId :: RoomId, userId :: UserId}
+    | RoomDestroyed RoomId
+    | UserLoggedOut {id :: UserId, roomsLoggingOut :: [RoomId]}
 
 
 instance FromJSON Broadcast where

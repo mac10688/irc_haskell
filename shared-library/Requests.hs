@@ -2,20 +2,20 @@ module Requests where
 
 import Data.Text (Text)
 import GHC.Generics
-import Data.UUID
 import Data.Aeson
 import Control.Applicative (empty)
+import Domain
 
 data Request 
     = Login Text
     | Logout
     | CreateRoom Text
-    | JoinRoom UUID
-    | LeaveRoom UUID
+    | JoinRoom RoomId
+    | LeaveRoom RoomId
     | ListAllRooms
-    | ListRoomMembers UUID
-    | DestroyRoom UUID
-    | SendMsgRoom UUID Text
+    | ListRoomMembers RoomId
+    | DestroyRoom RoomId
+    | SendMsgRoom RoomId Text
     deriving (Eq, Show)
 
 instance FromJSON Request where

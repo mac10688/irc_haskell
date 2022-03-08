@@ -2,12 +2,12 @@ module Responses where
 
 import Data.Text (Text)
 import GHC.Generics
-import Data.UUID
 import Data.Aeson
 import Control.Applicative (empty)
+import Domain
 
 data RoomExport = RoomExport {
-    roomExportId :: UUID,
+    roomExportId :: RoomId,
     roomExportName :: Text
 } deriving (Eq, Show)
 
@@ -19,7 +19,7 @@ instance ToJSON RoomExport where
     toJSON (RoomExport id name) = object ["roomId" .= id, "roomName" .= name]
 
 data UserExport = UserExport {
-    userExportId :: UUID,
+    userExportId :: UserId,
     userExportName :: Text
 } deriving (Eq, Show)
 
@@ -33,17 +33,16 @@ instance ToJSON UserExport where
 data RequestStatus = Success | Failure Text
 
 data Response
-    = UserLoggedIn UUID
-    | UserLoggedOut UUID
-    | RoomMsgSent
-    | ListOfUsers UUID [UserExport]
-    | RoomCreated UUID Text
-    | RoomJoined UUID [UserExport]
-    | RoomLeft UUID
+    = UserLoggedIn UserId
+    | UserLoggedOut UserId
+    | ListOfUsers RoomId [UserExport]
+    | RoomCreated RoomId Text
+    | RoomJoined RoomId [UserExport]
+    | RoomLeft RoomId
     | ListOfRooms [RoomExport]
-    | RoomDestroyed UUID
+    | RoomDestroyed RoomId
     | Error Text
-    deriving (Generic, Show)
+    deriving (Eq, Show)
 
 instance FromJSON Response where
     parseJSON (Object o) =
@@ -52,7 +51,6 @@ instance FromJSON Response where
         case oc of
             String "USER_LOGGED_IN" ->  UserLoggedIn <$> o .: "userId"
             String "USER_LOGGED_OUT" ->  UserLoggedOut <$> o .: "userId"
-            String "SEND_ROOM_MSG" -> return RoomMsgSent
             String "LIST_OF_USERS" -> ListOfUsers <$> o .: "roomId" <*> o .: "users" 
             String "ROOM_CREATED" ->  RoomCreated <$> o .: "roomId" <*> o .: "roomName"
             String "ROOM_JOINED" -> RoomJoined <$> o .: "roomId" <*> o .: "users"
@@ -66,7 +64,6 @@ instance FromJSON Response where
 instance ToJSON Response where
     toJSON (UserLoggedIn userId) = object ["response" .= ("USER_LOGGED_IN" :: Value), "userId" .= userId]
     toJSON (UserLoggedOut userId) = object ["response" .= ("USER_LOGGED_OUT" :: Value), "userId" .= userId]
-    toJSON (RoomMsgSent) = object ["response" .= ("SEND_ROOM_MSG" :: Value)]
     toJSON (ListOfUsers roomId' users) = object ["response" .= ("LIST_OF_USERS" :: Value), "roomId" .= roomId', "users" .= users]
     toJSON (RoomCreated roomId roomName) = object ["response" .= ("ROOM_CREATED" :: Value), "roomId" .= roomId, "roomName" .= roomName]
     toJSON (RoomJoined roomId users) = object ["response" .= ("ROOM_JOINED" :: Value), "roomId" .= roomId, "users" .= users]

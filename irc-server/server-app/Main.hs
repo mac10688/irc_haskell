@@ -15,30 +15,29 @@ import qualified Requests as Requests
 import qualified Responses as Responses
 import qualified Broadcasts as Broadcasts
 import Data.Aeson
-import Data.UUID
-import Data.UUID.V4
 import Data.Set as S
 import Data.Maybe
 import Data.Monoid
 import Say
 import qualified Network.WebSockets as WS
+import Domain
 
 data Room = Room {
-    roomId :: UUID,
+    roomId :: RoomId,
     roomName :: Text
 } deriving (Show)
 
 data User = User {
-    userId :: UUID,
+    userId :: UserId,
     userName :: Text,
     connection :: WS.Connection
 }
 
 data ServerState = ServerState {
-    users :: M.Map UUID User,
-    rooms :: M.Map UUID Room,
-    userToRoomMappings :: M.Map UUID (S.Set UUID),
-    roomToUserMappings :: M.Map UUID (S.Set UUID),
+    users :: M.Map UserId User,
+    rooms :: M.Map RoomId Room,
+    userToRoomMappings :: M.Map UserId (S.Set RoomId),
+    roomToUserMappings :: M.Map RoomId (S.Set UserId),
     usedUserNames :: S.Set Text,
     usedRoomNames :: S.Set Text
 }
@@ -56,7 +55,7 @@ newServerState = ServerState {
 nameTaken :: Text -> ServerState -> Bool
 nameTaken name = S.member name . usedUserNames
 
-addUser :: UUID -> Text -> WS.Connection -> ServerState -> ServerState
+addUser :: UserId -> Text -> WS.Connection -> ServerState -> ServerState
 addUser id name conn state = 
     let
         users' = M.insert id (User id name conn) $ users state 
@@ -68,7 +67,7 @@ addUser id name conn state =
         userToRoomMappings = userToRoomMappings'
     }
 
-logoutUser :: UUID -> ServerState -> ServerState
+logoutUser :: UserId -> ServerState -> ServerState
 logoutUser id state =
     let
         userMap' = M.delete id (users state)
@@ -83,7 +82,7 @@ logoutUser id state =
         , usedUserNames = usedUserNames'
     }
 
-removeUser :: UUID -> ServerState -> ServerState
+removeUser :: UserId -> ServerState -> ServerState
 removeUser userId state =
     let 
         possibleUserName = fromMaybe mempty $ userName <$> (M.lookup userId $ users state)
@@ -100,10 +99,7 @@ removeUser userId state =
         roomToUserMappings = roomToUserMappings' 
     }
 
-createUUID :: IO UUID
-createUUID = nextRandom
-
-createRoom :: UUID -> Text -> ServerState -> ServerState
+createRoom :: RoomId -> Text -> ServerState -> ServerState
 createRoom id name state =
     let 
         rooms' = M.insert id (Room id name) $ rooms state 
@@ -111,7 +107,7 @@ createRoom id name state =
         roomToUserMappings' = M.insert id S.empty $ roomToUserMappings state
     in state { rooms = rooms', usedRoomNames = usedRoomName', roomToUserMappings = roomToUserMappings' }
 
-destroyRoom :: UUID -> ServerState -> ServerState
+destroyRoom :: RoomId -> ServerState -> ServerState
 destroyRoom roomId state =
     let
         userToRoomMappings' = M.map (\roomSet -> S.delete roomId roomSet) $ userToRoomMappings state
@@ -126,14 +122,14 @@ destroyRoom roomId state =
         , usedRoomNames = usedRoomNames' 
     }
 
-joinRoom :: UUID -> UUID -> ServerState -> ServerState
+joinRoom :: UserId -> RoomId -> ServerState -> ServerState
 joinRoom userId roomId state = 
     let
         userToRoomMappings' = M.adjust (\roomSet -> S.insert roomId roomSet) userId $ userToRoomMappings state
         roomToUserMappings' = M.adjust (\userSet -> S.insert userId userSet) roomId $ roomToUserMappings state
     in state { userToRoomMappings = userToRoomMappings', roomToUserMappings = roomToUserMappings' }
 
-leaveRoom :: UUID -> UUID -> ServerState -> ServerState
+leaveRoom :: UserId -> RoomId -> ServerState -> ServerState
 leaveRoom userId roomId state = 
     let
         userToRoomMappings' = M.adjust (\roomSet -> S.delete roomId roomSet) userId  $ userToRoomMappings state
@@ -143,19 +139,19 @@ leaveRoom userId roomId state =
 listAllRooms :: ServerState -> [Room]
 listAllRooms = M.elems . rooms
 
-listRoomMembers :: UUID -> ServerState -> [User]
+listRoomMembers :: RoomId -> ServerState -> [User]
 listRoomMembers id state = 
     let
-        userIdList = S.toList $(M.findWithDefault S.empty id $ roomToUserMappings state :: S.Set UUID)
-        userMap = users state :: M.Map UUID User
-        userList = catMaybes $ Prelude.map (\userId' ->  (M.lookup userId' userMap)) userIdList
+        userIdList = S.toList $(M.findWithDefault S.empty id $ roomToUserMappings state :: S.Set UserId)
+        userMap = users state :: M.Map UserId User
+        userList = catMaybes $ Prelude.map (\userId' -> (M.lookup userId' userMap)) userIdList
     in userList
 
-sendRoomMessage :: ServerState -> UUID -> UUID -> Text -> IO ()
+sendRoomMessage :: ServerState -> UserId -> RoomId -> Text -> IO ()
 sendRoomMessage state fromUserId toRoomId msg' =
     let
-        userIdList = S.toList $(M.findWithDefault S.empty toRoomId $ (roomToUserMappings state) :: S.Set UUID)
-        userMap = users state :: M.Map UUID User
+        userIdList = S.toList $(M.findWithDefault S.empty toRoomId $ (roomToUserMappings state) :: S.Set UserId)
+        userMap = users state :: M.Map UserId User
         userList = catMaybes $ Prelude.map (\userId' -> (M.lookup userId' userMap)) userIdList
         fromUserName = userName <$> M.lookup fromUserId userMap
     in do
@@ -174,16 +170,25 @@ broadcast state message = do
 respondToUser :: WS.Connection -> Responses.Response -> IO ()
 respondToUser conn response = WS.sendTextData conn $ encodeJson response
 
-broadcastToRoom :: ServerState -> UUID -> Broadcasts.Broadcast -> IO ()
+broadcastToRoom :: ServerState -> RoomId -> Broadcasts.Broadcast -> IO ()
 broadcastToRoom state toRoomId broadcast  =
     let
-        userIdList = S.toList $(M.findWithDefault S.empty toRoomId $ (roomToUserMappings state) :: S.Set UUID)
-        userMap = users state :: M.Map UUID User
+        userIdList = S.toList $(M.findWithDefault S.empty toRoomId $ (roomToUserMappings state) :: S.Set UserId)
+        userMap = users state :: M.Map UserId User
         userList = catMaybes $ Prelude.map (\userId' -> (M.lookup userId' userMap)) userIdList
     in do
         forM_ userList $ \user -> WS.sendTextData (connection user) (encode broadcast)
 
-broadcastExceptToUser :: ServerState -> UUID -> Broadcasts.Broadcast -> IO ()
+broadcastToRoomExceptUser :: ServerState -> RoomId -> UserId -> Broadcasts.Broadcast -> IO ()
+broadcastToRoomExceptUser state toRoomId exceptUserId broadcast =
+    let
+        userIdList = S.toList $ S.filter (/= exceptUserId) $(M.findWithDefault S.empty toRoomId $ (roomToUserMappings state) :: S.Set UserId)
+        userMap = users state :: M.Map UserId User
+        userList = catMaybes $ Prelude.map (\userId' -> (M.lookup userId' userMap)) userIdList
+    in do
+        forM_ userList $ \user -> WS.sendTextData (connection user) (encode broadcast)
+
+broadcastExceptToUser :: ServerState -> UserId -> Broadcasts.Broadcast -> IO ()
 broadcastExceptToUser state fromUserId broadcast  =
     forM_ (Prelude.filter (\u -> (userId u) /= fromUserId) $ M.elems (users state)) $ \user -> WS.sendTextData (connection user) (encode broadcast)
 
@@ -216,7 +221,7 @@ application mVarState pending = do
         say $ T.decodeUtf8 $ BS.toStrict $ msg
         state <- readMVar mVarState
         let requsetM = (decode msg :: Maybe Requests.Request)
-        userId <- createUUID
+        userId <- createUserId
         case requsetM of
             Just (Requests.Login name)
                 | any ($ name)
@@ -247,9 +252,10 @@ application mVarState pending = do
 
 -- The talk function continues to read messages from a single user until he
 -- disconnects. All messages are broadcasted to the other users.
-talk :: UUID -> WS.Connection -> MVar ServerState -> IO ()
+talk :: UserId -> WS.Connection -> MVar ServerState -> IO ()
 talk userId' conn mVarState = forever $ do
     msg <- WS.receiveData conn
+    -- putStrLn $ ("Message received: " :: Text) <> (T.decodeUtf8 . BS.toStrict $ msg)
     let actionM = (decode msg :: Maybe Requests.Request)
     case actionM of
         Just (action) -> 
@@ -261,14 +267,12 @@ talk userId' conn mVarState = forever $ do
                     respondToUser conn $ Responses.UserLoggedOut userId'
                     return newState
                 Requests.CreateRoom name -> modifyMVar_ mVarState $ \s -> do
-                    roomId' <- createUUID
+                    roomId' <- createRoomId
                     let s' = createRoom roomId' name s
                     respondToUser conn $ Responses.RoomCreated roomId' name
                     return s'
                 Requests.JoinRoom roomId' -> modifyMVar_ mVarState $ \s -> do
-                    print (roomToUserMappings s)
                     let s' = joinRoom userId' roomId' s
-                    print (roomToUserMappings s')
                     let username' = fromJust $ userName <$> M.lookup userId' (users s)
                     broadcastToRoom s roomId' $ Broadcasts.UserJoinedRoom {roomId=roomId', userId=userId', username=username'}
                     let users = (\u -> Responses.UserExport { userExportId = (userId u), userExportName = (userName u) }) <$> listRoomMembers roomId' s'
@@ -292,7 +296,7 @@ talk userId' conn mVarState = forever $ do
                     sendRoomMessage s userId' roomId' msg 
                 Requests.DestroyRoom roomId' -> modifyMVar_ mVarState $ \s -> do
                     let s' = destroyRoom roomId' s
-                    broadcastToRoom s' roomId' $ Broadcasts.RoomDestroyed roomId'
+                    broadcastToRoomExceptUser s roomId' userId' $ Broadcasts.RoomDestroyed roomId'
                     respondToUser conn $ Responses.RoomDestroyed roomId'
                     return s'
                 Requests.Login _ -> respondToUser conn $ Responses.Error "User is already logged in."
