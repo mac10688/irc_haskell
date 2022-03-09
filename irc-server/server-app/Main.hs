@@ -177,6 +177,13 @@ respondToUser conn response =
         Log.log msg
         WS.sendTextData conn $ msg
 
+closeConnection :: WS.Connection -> Responses.Response -> IO ()
+closeConnection conn response =
+    do 
+        let msg = encodeJson response
+        Log.log msg
+        WS.sendClose conn $ msg
+
 broadcastToRoom :: ServerState -> RoomId -> Broadcasts.Broadcast -> IO ()
 broadcastToRoom state toRoomId broadcast  =
     let
@@ -230,7 +237,7 @@ main = Log.withStdoutLogging $ do
 application :: MVar ServerState -> WS.ServerApp
 application mVarState pending = do
     conn <- WS.acceptRequest pending
-    putStrLn "Someone is reaching out"
+    Log.log "Someone is reaching out"
     WS.withPingThread conn 30 (return ()) $ do
         msg <- WS.receiveData conn
         Log.log $ T.decodeUtf8 $ BS.toStrict $ msg
@@ -241,11 +248,9 @@ application mVarState pending = do
             Just (Requests.Login name)
                 | any ($ name)
                     [T.null, T.any isPunctuation, T.any isSpace] ->
-                        WS.sendClose conn ("Name cannot " <>
-                            "contain punctuation or whitespace, and " <>
-                            "cannot be empty" :: Text)
+                        closeConnection conn $ Responses.Error "Name cannot contain punctuation or whitespace, and cannot be empty. Closing connection. Please reconnect and try again."
                 | nameTaken name state ->
-                    WS.sendClose conn ("User already exists" :: Text)
+                    closeConnection conn $ Responses.Error "User already exists. Closing connection. Please reconnect and try again."
                 | otherwise -> 
                     flip finally (disconnect userId) $ do
                     modifyMVar_ mVarState $ \s -> do
@@ -254,10 +259,9 @@ application mVarState pending = do
                         respondToUser conn $ Responses.UserLoggedIn userId
                         return s'
                     talk userId conn mVarState
-            Just _ -> WS.sendClose conn ("Expected a login request. Reconnect and try again." :: Text)
+            Just _ -> closeConnection conn $ Responses.Error "Expected a login request. Closing connection; user must send login request immediately after opening a connection."
             Nothing -> do
-                putStrLn "Someone tried joining but didn't send the correct format"
-                WS.sendClose conn ("Not working" :: Text) --test that this actually closes a connection
+                closeConnection conn $ Responses.Error "The request was not identified. Closing connection; user must send login request immediately after opening a connection."
             where
             disconnect userId = do
                 -- Remove user and return new state
@@ -315,4 +319,4 @@ talk userId' conn mVarState = forever $ do
                     respondToUser conn $ Responses.RoomDestroyed roomId'
                     return s'
                 Requests.Login _ -> respondToUser conn $ Responses.Error "User is already logged in."
-        Nothing -> WS.sendTextData conn $ ("Error" :: Text)
+        Nothing -> respondToUser conn $ Responses.Error "The request was not identified."
