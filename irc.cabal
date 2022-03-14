@@ -76,26 +76,6 @@ library shared-library
     -Werror
     -O2
 
-library server-library
-  -- Modules exported by the library.
-  exposed-modules:     ConnectionState
-
-  -- Modules included in this library but not exported.
-  -- other-modules:
-
-  -- LANGUAGE extensions used by modules in this package.
-  -- other-extensions:
-
-  -- Other library packages from which modules are imported.
-  build-depends:       base ^>=4.14.3.0, containers
-
-  -- Directories containing source files.
-  hs-source-dirs:      irc-server/server-library
-
-  default-extensions: DeriveGeneric
-                      OverloadedStrings
-                      DuplicateRecordFields
-
   -- Base language which the package is written in.
   default-language:    Haskell2010
   
@@ -116,7 +96,7 @@ executable irc-server-exe
   -- other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base ^>=4.14.3.0, shared-library, server-library, uuid, network, bytestring, stm, logging, text, websockets, bimap, aeson, containers
+  build-depends:       base ^>=4.14.3.0, shared-library, uuid, network, bytestring, stm, logging, text, websockets, bimap, aeson, containers
 
   -- Directories containing source files.
   hs-source-dirs:      irc-server/server-app
