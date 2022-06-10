@@ -154,7 +154,25 @@ executable irc-client-exe
   -- other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base ^>=4.14.3.0, shared-library, client-library, bytestring, websockets, text, mtl, network, aeson, uuid
+  build-depends:       base ^>=4.14.3.0
+                       , shared-library
+                       , client-library
+                       , bytestring
+                       , websockets
+                       , text
+                       , mtl
+                       , network
+                       , aeson
+                       , uuid
+                       , brick
+                       , mtl
+                       , text
+                       , containers
+                       , safe
+                       , vty
+                       , lens
+                       , vector
+                       , void
 
   -- Directories containing source files.
   hs-source-dirs:      irc-client/client-app
@@ -171,6 +189,7 @@ executable irc-client-exe
     -fwarn-incomplete-uni-patterns
     -Werror
     -O2
+    -threaded
 
 
 test-suite irc-shared-library-tests
